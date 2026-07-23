@@ -381,6 +381,14 @@ class Header:
                 self.struct_alias[alias] = name
             if name in self.structs or name in self.unions:
                 continue
+            # Fortran BIND(C) has no bitfields. A struct containing any is
+            # emitted as an opaque, probe-sized buffer -- the same treatment as
+            # a union -- so it can still be declared, passed and stored, and so
+            # that functions taking it are not silently dropped.
+            if kind == "struct" and re.search(r":\s*\d+\s*[;,]", body):
+                self.unions[name] = None
+                self.struct_order.append(name)
+                continue
             if kind == "union":
                 # Fortran BIND(C) has no union. Emit it as an opaque byte
                 # buffer whose length comes from the C probe, so it can still
@@ -484,6 +492,14 @@ class Header:
         if not m:
             return None
         base, rest = m.group(1).strip(), m.group(2).strip()
+        # `unsigned allocationFlags;` -- a bare `unsigned` with no `int`. The
+        # pattern above greedily takes the DECLARATOR as the type name, leaving
+        # nothing behind. Give the trailing identifier back.
+        if not rest:
+            toks = base.split()
+            if len(toks) > 1 and toks[-1] not in (
+                    "int", "long", "char", "short", "unsigned", "signed"):
+                rest, base = toks[-1], " ".join(toks[:-1])
         out = []
         for d in rest.split(","):
             d = d.strip()
@@ -1184,7 +1200,9 @@ def emit(api, hdr, mapper, probe, syms, version, cuda):
             emitted[fname.lower()] = cval
             if fname != cname:
                 emitted[key] = cval
-            w(f"    integer(c_int), parameter :: {fname} = {cval}")
+            ekind = "c_int" if -2**31 <= cval < 2**31 else "c_int64_t"
+            elit = f"{cval}" if ekind == "c_int" else f"{cval}_c_int64_t"
+            w(f"    integer({ekind}), parameter :: {fname} = {elit}")
             nconst += 1
         w("")
 
@@ -1205,8 +1223,12 @@ def emit(api, hdr, mapper, probe, syms, version, cuda):
                 shortened.append((orig, fname))
                 w(f"    ! C name (shortened to fit Fortran's 63-char limit): {orig}")
             kind = "c_int" if -2**31 <= mval < 2**31 else "c_int64_t"
+            # The kind suffix is required, not decorative: a bare literal is a
+            # DEFAULT integer, so a value such as HIP's 2147483648 overflows
+            # int32 before the parameter's declared kind is ever considered.
+            lit = f"{mval}" if kind == "c_int" else f"{mval}_c_int64_t"
             emitted[fname.lower()] = mval
-            w(f"    integer({kind}), parameter :: {fname} = {mval}")
+            w(f"    integer({kind}), parameter :: {fname} = {lit}")
             nmacro += 1
         w("")
 
