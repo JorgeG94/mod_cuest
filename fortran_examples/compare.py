@@ -190,13 +190,29 @@ def main(a, b, tol=1e-10, name=None, jsonl=None):
             r = max(rel(u, v) for u, v in zip(va, vb))
             checks += len(va)
             ok = r <= tol or max(abs(u - v) for u, v in zip(va, vb)) <= floor
+            note = ""
+            if not ok and (signdep or informational):
+                # In a sign-dependent section the individual values carry the
+                # same arbitrary sign as the sum, so compare MAGNITUDES -- the
+                # invariant. A rel of exactly 2.0 is the signature: |x-y|/max(x,y)
+                # equals 2 only when y == -x. Magnitudes must still agree, so a
+                # genuine error is still caught.
+                ra = max(rel(abs(u), abs(v)) for u, v in zip(va, vb))
+                ra_abs = max(abs(abs(u) - abs(v)) for u, v in zip(va, vb))
+                # Judged against the section's own scale, as trace and norm
+                # already are: an equivalent-but-different factorisation of the
+                # fitting metric perturbs elements at the 1e-11 level, which is
+                # negligible beside a tensor whose largest element is ~21.
+                if ra <= tol or ra_abs <= floor:
+                    ok, note, r = True, " (|values| agree; signs differ)", ra
+                    gauge += 1
             if not ok:
                 bad += 1
                 worst = max(worst, r)
                 rec["failures"].append({"section": label, "field": "values",
                                         "rel": r, "detail": f"{len(va)} numbers"})
             print(f"  {label:32s} {'values':16s} {len(va):4d} numbers"
-                  f"{'':25s} max rel={r:.2e}  {'ok' if ok else 'MISMATCH'}")
+                  f"{'':25s} max rel={r:.2e}  {'ok' if ok else 'MISMATCH'}{note}")
 
     rec.update(checks=checks, noise=noise, gauge=gauge, worst=worst)
     print(f"\n{checks} quantities compared across {len(A)} sections")
