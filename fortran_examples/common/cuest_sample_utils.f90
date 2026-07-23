@@ -25,7 +25,7 @@ module cuest_sample_utils
     public :: cuest_check, cuda_ck
     public :: ws_alloc, ws_free
     public :: dev_alloc, dev_free, dev_to_host
-    public :: matrix_report
+    public :: matrix_report, array_report, scalar_report
     public :: arg, require_args
 
     !> Plain C malloc/free for the host half of a cuEST workspace. The C helper
@@ -171,6 +171,48 @@ contains
             write(*,'(6X,*(1X,F14.9))') (a((i-1)*n + j), j = 1, m)
         end do
     end subroutine matrix_report
+
+    !> Print a fingerprint of a flat array -- gradients, dipoles, charges.
+    !
+    !  Format is matched exactly by oracle/oracle_report.h :: oracle_report_array
+    !  and parsed by compare.py. Change one, change all three.
+    subroutine array_report(label, a, n)
+        character(*),       intent(in) :: label
+        real(c_double),     intent(in) :: a(:)
+        integer(c_int64_t), intent(in) :: n
+        real(c_double) :: s, nrm, amax
+        integer :: i, m
+        s = 0.0d0
+        nrm = 0.0d0
+        amax = 0.0d0
+        do i = 1, int(n)
+            s = s + a(i)
+            nrm = nrm + a(i)**2
+            if (abs(a(i)) > amax) amax = abs(a(i))
+        end do
+        nrm = sqrt(nrm)
+        m = min(12, int(n))
+        write(*,'(A)')      "  " // repeat("-", 60)
+        write(*,'(A,A)')    "  array ", label
+        write(*,'(A,I0)')      "    length         : ", n
+        write(*,'(A,ES22.14)') "    sum            : ", s
+        write(*,'(A,ES22.14)') "    norm           : ", nrm
+        write(*,'(A,ES22.14)') "    max |a_i|      : ", amax
+        write(*,'(A,I0,A)')    "    first ", m, " values:"
+        do i = 1, m
+            write(*,'(1X,F18.12)', advance="no") a(i)
+            if (mod(i, 6) == 0 .or. i == m) write(*,'(A)') ""
+        end do
+    end subroutine array_report
+
+    !> Print a single number -- an energy, a trace, a count.
+    subroutine scalar_report(label, v)
+        character(*),   intent(in) :: label
+        real(c_double), intent(in) :: v
+        write(*,'(A)')      "  " // repeat("-", 60)
+        write(*,'(A,A)')    "  scalar ", label
+        write(*,'(A,ES22.14)') "    value          : ", v
+    end subroutine scalar_report
 
     ! ---- command line -----------------------------------------------------
 

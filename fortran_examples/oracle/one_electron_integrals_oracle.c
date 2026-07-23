@@ -31,12 +31,15 @@
 
 #include <cuest.h>
 
-#include <math.h>
 #include <helper_status.h>
 #include <helper_workspaces.h>
 #include <helper_xyz_parser.h>
 #include <helper_gbs_parser.h>
 #include <helper_ao_shells.h>
+
+/* ADDED: shared reporting, so this oracle and the Fortran port
+ * print the identical format that compare.py parses. */
+#include "oracle_report.h"
 
 /*
  * This sample shows how to use cuEST to compute
@@ -50,46 +53,6 @@
  * integrals themselves are generated directly into a user
  * provided device array allocated with cudaMalloc.
  */
-
-/* ---- ADDED FOR THE FORTRAN PORT COMPARISON -------------------------------
- * The upstream sample computes S, T and V and exits without printing them,
- * so there is nothing to diff a port against. This copy pulls each matrix
- * back to the host and prints the same fingerprint as the Fortran port
- * (fortran_examples/common/cuest_sample_utils.f90 :: matrix_report).
- * ------------------------------------------------------------------------ */
-static void report_matrix(const char* label, const double* d_A, uint64_t n)
-{
-    double* a = (double*) malloc(n * n * sizeof(double));
-    if (!a) { fprintf(stderr, "report_matrix: out of memory\n"); exit(EXIT_FAILURE); }
-    if (cudaMemcpy(a, d_A, n * n * sizeof(double), cudaMemcpyDeviceToHost) != cudaSuccess) {
-        fprintf(stderr, "report_matrix: cudaMemcpy failed\n"); exit(EXIT_FAILURE);
-    }
-    double tr = 0.0, fro = 0.0, asym = 0.0;
-    for (uint64_t i = 0; i < n; i++) {
-        tr += a[i*n + i];
-        for (uint64_t j = 0; j < n; j++) {
-            fro += a[i*n + j] * a[i*n + j];
-            double d = fabs(a[i*n + j] - a[j*n + i]);
-            if (d > asym) asym = d;
-        }
-    }
-    fro = sqrt(fro);
-    uint64_t m = (n < 5) ? n : 5;
-    printf("  ------------------------------------------------------------\n");
-    printf("  matrix %s\n", label);
-    printf("    dimension      : %llu x %llu\n",
-           (unsigned long long) n, (unsigned long long) n);
-    printf("    trace          : %.14E\n", tr);
-    printf("    Frobenius norm : %.14E\n", fro);
-    printf("    max |A-A^T|    : %.2E\n", asym);
-    printf("    leading %llu x %llu block:\n",
-           (unsigned long long) m, (unsigned long long) m);
-    for (uint64_t i = 0; i < m; i++) {
-        for (uint64_t j = 0; j < m; j++) printf(" %14.9f", a[i*n + j]);
-        printf("\n");
-    }
-    free(a);
-}
 
 int main(int argc, char **argv)
 {
@@ -339,7 +302,7 @@ int main(int argc, char **argv)
 
     freeWorkspace(temporarySWorkspace);
 
-    report_matrix("S (overlap)", d_S, nao);
+    oracle_report_matrix("S (overlap)", d_S, nao);
 
     /* The overlap compute parameter handle is no longer needed. */
     checkCuestErrors(cuestParametersDestroy(
@@ -372,7 +335,7 @@ int main(int argc, char **argv)
 
     freeWorkspace(temporaryTWorkspace);
 
-    report_matrix("T (kinetic)", d_T, nao);
+    oracle_report_matrix("T (kinetic)", d_T, nao);
 
     /* The kinetic compute parameter handle is no longer needed. */
     checkCuestErrors(cuestParametersDestroy(
@@ -411,7 +374,7 @@ int main(int argc, char **argv)
 
     freeWorkspace(temporaryVWorkspace);
 
-    report_matrix("V (nuclear attraction)", d_V, nao);
+    oracle_report_matrix("V (nuclear attraction)", d_V, nao);
 
     /* The potential compute parameter handle is no longer needed. */
     checkCuestErrors(cuestParametersDestroy(

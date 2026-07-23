@@ -85,27 +85,35 @@ while IFS='|' read -r name args; do
     echo
 done < "$MANIFEST"
 
-# If the C reference was built, diff it against the Fortran port numerically.
-ORACLE="$BUILD_DIR/bin/one_electron_integrals_oracle"
-FPORT="$BUILD_DIR/bin/one_electron_integrals"
-if [ -x "$ORACLE" ] && [ -x "$FPORT" ]; then
-    echo "[ RUN  ] one_electron_integrals vs C reference"
-    if "$ORACLE" "$XYZ" "$GBS" > "$BUILD_DIR/c.out" 2>&1 &&
-       "$FPORT"  "$XYZ" "$GBS" > "$BUILD_DIR/f.out" 2>&1 &&
-       python3 "$SCRIPT_DIR/compare.py" "$BUILD_DIR/c.out" "$BUILD_DIR/f.out"; then
-        echo "[ PASS ] one_electron_integrals vs C reference"
-        PASS=$((PASS + 1))
-    else
-        echo "[ FAIL ] one_electron_integrals vs C reference"
-        FAIL=$((FAIL + 1))
-        FAILED_NAMES+=("one_electron_integrals vs C reference")
-    fi
-    echo
+# Every example that has a C reference is compared against it automatically;
+# the list comes from CMake, so nothing here needs editing when one is added.
+if [ -f "$BUILD_DIR/oracles.manifest" ]; then
+    while read -r name; do
+        [ -z "${name:-}" ] && continue
+        fport="$BUILD_DIR/bin/$name"
+        oracle="$BUILD_DIR/bin/${name}_oracle"
+        if [ ! -x "$fport" ] || [ ! -x "$oracle" ]; then
+            echo "[ SKIP ] $name vs C reference (not built)"
+            SKIP=$((SKIP + 1)); continue
+        fi
+        echo "[ RUN  ] $name vs C reference"
+        if "$SCRIPT_DIR/run_one.sh" "$BUILD_DIR" "$oracle" "$name" \
+                > "$BUILD_DIR/$name.c.out" 2>&1 &&
+           "$SCRIPT_DIR/run_one.sh" "$BUILD_DIR" "$fport"  "$name" \
+                > "$BUILD_DIR/$name.f.out" 2>&1 &&
+           python3 "$SCRIPT_DIR/compare.py" \
+                "$BUILD_DIR/$name.c.out" "$BUILD_DIR/$name.f.out"; then
+            echo "[ PASS ] $name vs C reference"
+            PASS=$((PASS + 1))
+        else
+            echo "[ FAIL ] $name vs C reference"
+            FAIL=$((FAIL + 1)); FAILED_NAMES+=("$name vs C reference")
+        fi
+        echo
+    done < "$BUILD_DIR/oracles.manifest"
 else
-    echo "[ SKIP ] C reference comparison (oracle not built)"
-    echo "         configure with -DCUEST_INCLUDE_DIR and -DCUEST_SAMPLES_COMMON_DIR"
-    SKIP=$((SKIP + 1))
-    echo
+    echo "[ SKIP ] C reference comparisons (no oracles built)"
+    SKIP=$((SKIP + 1)); echo
 fi
 
 echo "============================================================"

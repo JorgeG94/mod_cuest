@@ -1,63 +1,108 @@
 #!/usr/bin/env python3
-"""Compare the C reference and Fortran port fingerprints for a cuEST sample.
+"""Compare a C reference oracle against a Fortran port, numerically.
 
-Parses numbers out of both outputs rather than diffing text, so the two are
-allowed to differ in spacing and exponent formatting.
+Both sides print sections in a shared format (see oracle/oracle_report.h and
+common/cuest_sample_utils.f90):
+
+    matrix <label>  -> trace, Frobenius norm, max|A-A^T|, leading block
+    array  <label>  -> length, sum, norm, max|a_i|, first values
+    scalar <label>  -> value
+
+This parses the numbers rather than diffing text, so the two sides are free to
+differ in spacing and in D- vs E-exponent spelling.
+
+    compare.py <c_output> <fortran_output> [tolerance]
 """
-import re, sys
+import re
+import sys
 
-NUM = r"[-+]?\d+\.\d+(?:[EeDd][-+]?\d+)?"
+NUM = r"[-+]?(?:\d+\.\d*|\.\d+|\d+)(?:[EeDd][-+]?\d+)?"
+SECTION = re.compile(r"^\s*(matrix|array|scalar)\s+(\S.*?)\s*$")
+FIELD = re.compile(r"^\s*([A-Za-z][^:]*?)\s*:\s*(" + NUM + r")\s*$")
+VALUES = re.compile(r"^\s*(?:" + NUM + r"\s+)*" + NUM + r"\s*$")
+
+
+def to_float(s):
+    return float(s.replace("D", "E").replace("d", "e"))
+
 
 def parse(path):
+    """-> {section: {"kind":..., "fields": {name: value}, "values": [...]}}"""
     out, cur = {}, None
-    for ln in open(path):
-        m = re.search(r"matrix\s+(\S.*?)\s*$", ln)
-        if m and "dimension" not in ln:
-            cur = m.group(1).strip(); out[cur] = {"block": []}; continue
+    for ln in open(path, errors="replace"):
+        m = SECTION.match(ln)
+        if m:
+            cur = f"{m.group(1)} {m.group(2)}"
+            out[cur] = {"kind": m.group(1), "fields": {}, "values": []}
+            continue
         if cur is None:
             continue
-        for key, label in (("trace", "trace"), ("Frobenius norm", "fro"),
-                           (r"max \|A-A\^T\|", "asym")):
-            m = re.search(key + r"\s*:\s*(" + NUM + ")", ln)
-            if m:
-                out[cur][label] = float(m.group(1).replace("D", "E").replace("d", "e"))
-        if re.match(r"\s*(?:[-+]?\d+\.\d+\s+)+$", ln):
-            out[cur]["block"] += [float(x) for x in ln.split()]
+        m = FIELD.match(ln)
+        if m:
+            out[cur]["fields"][m.group(1).strip()] = to_float(m.group(2))
+            continue
+        if ln.strip() and VALUES.match(ln):
+            out[cur]["values"] += [to_float(x) for x in ln.split()]
     return out
+
+
+def rel(x, y):
+    d = max(abs(x), abs(y))
+    return 0.0 if d == 0.0 else abs(x - y) / d
+
 
 def main(a, b, tol=1e-10):
     A, B = parse(a), parse(b)
     if not A or not B:
-        sys.exit(f"could not parse fingerprints (C:{len(A)} F:{len(B)} matrices)")
-    if set(A) != set(B):
-        sys.exit(f"matrix sets differ:\n  C: {sorted(A)}\n  F: {sorted(B)}")
-    worst, bad = 0.0, 0
-    for name in sorted(A):
-        for key in ("trace", "fro", "asym"):
-            if key not in A[name] or key not in B[name]:
+        sys.exit(f"could not parse any sections (C:{len(A)} Fortran:{len(B)})")
+
+    only_c, only_f = sorted(set(A) - set(B)), sorted(set(B) - set(A))
+    if only_c or only_f:
+        for s in only_c:
+            print(f"  MISSING from Fortran output: {s}")
+        for s in only_f:
+            print(f"  EXTRA in Fortran output:     {s}")
+        sys.exit("FAIL: the two outputs do not describe the same quantities")
+
+    worst, bad, checks = 0.0, 0, 0
+    for label in sorted(A):
+        for name, x in A[label]["fields"].items():
+            if name not in B[label]["fields"]:
+                print(f"  {label}: field '{name}' missing from Fortran output")
+                bad += 1
                 continue
-            x, y = A[name][key], B[name][key]
-            r = abs(x - y) / max(abs(x), 1e-30)
+            y = B[label]["fields"][name]
+            r = rel(x, y)
             worst = max(worst, r)
-            flag = "ok" if r <= tol else "MISMATCH"
-            if r > tol:
+            checks += 1
+            ok = r <= tol
+            if not ok:
                 bad += 1
-            print(f"  {name:26s} {key:6s}  C={x: .14e}  F={y: .14e}  rel={r:.2e}  {flag}")
-        ba, bb = A[name]["block"], B[name]["block"]
-        if len(ba) != len(bb):
-            print(f"  {name}: block sizes differ ({len(ba)} vs {len(bb)})"); bad += 1
-        else:
-            r = max((abs(u - v) / max(abs(u), 1e-30) for u, v in zip(ba, bb)),
-                    default=0.0)
+            print(f"  {label:32s} {name:16s} C={x: .12e} F={y: .12e} "
+                  f"rel={r:.2e}  {'ok' if ok else 'MISMATCH'}")
+        va, vb = A[label]["values"], B[label]["values"]
+        if len(va) != len(vb):
+            print(f"  {label}: value count differs ({len(va)} vs {len(vb)})")
+            bad += 1
+        elif va:
+            r = max(rel(u, v) for u, v in zip(va, vb))
             worst = max(worst, r)
-            if r > tol:
+            checks += len(va)
+            ok = r <= tol
+            if not ok:
                 bad += 1
-            print(f"  {name:26s} block   {len(ba)} values           "
-                  f"      max rel={r:.2e}  {'ok' if r <= tol else 'MISMATCH'}")
-    print(f"\nworst relative difference: {worst:.3e}   tolerance: {tol:.1e}")
+            print(f"  {label:32s} {'values':16s} {len(va):4d} numbers"
+                  f"{'':25s} max rel={r:.2e}  {'ok' if ok else 'MISMATCH'}")
+
+    print(f"\n{checks} quantities compared across {len(A)} sections")
+    print(f"worst relative difference: {worst:.3e}   tolerance: {tol:.1e}")
     if bad:
         sys.exit(f"FAIL: {bad} quantity/quantities disagree")
     print("PASS: Fortran port matches the C reference")
 
+
 if __name__ == "__main__":
-    main(sys.argv[1], sys.argv[2])
+    if len(sys.argv) < 3:
+        sys.exit(__doc__)
+    main(sys.argv[1], sys.argv[2],
+         float(sys.argv[3]) if len(sys.argv) > 3 else 1e-10)

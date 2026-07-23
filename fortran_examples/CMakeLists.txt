@@ -82,15 +82,19 @@ endif()
 # c_examples/common. CMake scans Fortran source for MODULE/USE and works out
 # the compile order itself, so the sources are just listed.
 # ---------------------------------------------------------------------------
+# common/*.f90 is globbed (with CONFIGURE_DEPENDS, so cmake re-runs when a file
+# appears) rather than listed. Ports are developed in parallel and each new
+# shared helper would otherwise mean editing this one file from several places
+# at once. CMake works out the compile order from the MODULE/USE statements.
+file(GLOB CUEST_COMMON_SOURCES CONFIGURE_DEPENDS
+     ${CMAKE_CURRENT_SOURCE_DIR}/common/*.f90)
+
 add_library(cuest_fortran_common STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../cudafort/cuda_runtime.f90
     ${CMAKE_CURRENT_SOURCE_DIR}/../cudafort/cuda_helpers.f90
     ${CMAKE_CURRENT_SOURCE_DIR}/../cuest.f90
     ${CMAKE_CURRENT_SOURCE_DIR}/../cuest_helpers.f90
-    common/cuest_sample_utils.f90
-    common/xyz_parser.f90
-    common/gbs_parser.f90
-    common/ao_shells.f90
+    ${CUEST_COMMON_SOURCES}
 )
 target_link_libraries(cuest_fortran_common
     PUBLIC
@@ -114,6 +118,8 @@ target_include_directories(cuest_fortran_common
 # newlines the manifest needs.
 set_property(GLOBAL PROPERTY CUEST_FORTRAN_MANIFEST "")
 
+set_property(GLOBAL PROPERTY CUEST_ORACLE_MANIFEST "")
+
 function(add_fortran_example NAME SOURCE)
     cmake_parse_arguments(AE "" "" "ARGS" ${ARGN})
     add_executable(${NAME} ${SOURCE})
@@ -122,9 +128,42 @@ function(add_fortran_example NAME SOURCE)
     set_property(GLOBAL APPEND PROPERTY CUEST_FORTRAN_MANIFEST "${NAME}|${_args}")
 endfunction()
 
+# add_c_oracle(<example_name> <source.c>)
+#
+# Builds the C reference for <example_name> as <example_name>_oracle and records
+# it so run_all.sh compares the pair automatically. Silently does nothing if the
+# CUDALibrarySamples helpers are unavailable, so a package without them still
+# builds every Fortran example.
+function(add_c_oracle NAME SOURCE)
+    if(NOT CUEST_ORACLES_AVAILABLE)
+        return()
+    endif()
+    add_executable(${NAME}_oracle ${SOURCE})
+    target_include_directories(${NAME}_oracle PRIVATE
+        ${CUEST_INCLUDE_DIR} ${CUEST_SAMPLES_COMMON_DIR}
+        ${CMAKE_SOURCE_DIR}/oracle)
+    target_link_libraries(${NAME}_oracle PRIVATE ${CUEST_LIBRARY} CUDA::cudart m)
+    set_property(GLOBAL APPEND PROPERTY CUEST_ORACLE_MANIFEST "${NAME}")
+endfunction()
+
+if(DEFINED CUEST_SAMPLES_COMMON_DIR AND EXISTS ${CUEST_SAMPLES_COMMON_DIR}
+   AND DEFINED CUEST_INCLUDE_DIR AND EXISTS ${CUEST_INCLUDE_DIR})
+    set(CUEST_ORACLES_AVAILABLE TRUE)
+    message(STATUS "C oracles: enabled")
+else()
+    set(CUEST_ORACLES_AVAILABLE FALSE)
+    message(STATUS "C oracles: DISABLED (need the CUDALibrarySamples helpers; "
+                   "set -DCUEST_SAMPLES_COMMON_DIR=<...>/c_examples/common)")
+endif()
+
 add_subdirectory(common)
+add_subdirectory(0_context)
+add_subdirectory(1_basic_data_structures)
 add_subdirectory(2_one_electron_integrals)
-add_subdirectory(oracle)
+add_subdirectory(3_density_fitting)
+add_subdirectory(4_exchange_correlation)
+add_subdirectory(5_effective_core_potentials)
+add_subdirectory(6_pcm)
 
 # A manifest of "name|args" that run_all.sh reads, so adding an example needs
 # no edit to the run script.
@@ -133,6 +172,12 @@ list(REMOVE_ITEM _manifest "")
 list(JOIN _manifest "\n" _manifest_text)
 file(GENERATE OUTPUT ${CMAKE_BINARY_DIR}/examples.manifest
      CONTENT "${_manifest_text}\n")
+
+get_property(_oracles GLOBAL PROPERTY CUEST_ORACLE_MANIFEST)
+list(REMOVE_ITEM _oracles "")
+list(JOIN _oracles "\n" _oracles_text)
+file(GENERATE OUTPUT ${CMAKE_BINARY_DIR}/oracles.manifest
+     CONTENT "${_oracles_text}\n")
 
 # ---------------------------------------------------------------------------
 # CTest: `ctest --test-dir build` as an alternative to run_all.sh.
@@ -144,21 +189,22 @@ set(DATA_DIR ${CMAKE_CURRENT_SOURCE_DIR}/data)
 add_test(NAME parsers
          COMMAND $<TARGET_FILE:test_parsers>
                  ${DATA_DIR}/geometry/h2o.xyz ${DATA_DIR}/basis_set/def2-svp.gbs)
-add_test(NAME one_electron_integrals
-         COMMAND $<TARGET_FILE:one_electron_integrals>
-                 ${DATA_DIR}/geometry/h2o.xyz ${DATA_DIR}/basis_set/def2-svp.gbs)
 
-if(TARGET one_electron_integrals_oracle)
-    add_test(NAME one_electron_integrals_vs_c
+get_property(_oracle_names GLOBAL PROPERTY CUEST_ORACLE_MANIFEST)
+foreach(_o IN LISTS _oracle_names)
+    if(_o STREQUAL "")
+        continue()
+    endif()
+    add_test(NAME ${_o}_vs_c
              COMMAND ${CMAKE_COMMAND}
-                 -DFORTRAN_EXE=$<TARGET_FILE:one_electron_integrals>
-                 -DC_EXE=$<TARGET_FILE:one_electron_integrals_oracle>
+                 -DFORTRAN_EXE=$<TARGET_FILE:${_o}>
+                 -DC_EXE=$<TARGET_FILE:${_o}_oracle>
                  -DCOMPARE=${CMAKE_CURRENT_SOURCE_DIR}/compare.py
-                 -DXYZ=${DATA_DIR}/geometry/h2o.xyz
-                 -DGBS=${DATA_DIR}/basis_set/def2-svp.gbs
+                 -DNAME=${_o}
                  -DWORKDIR=${CMAKE_BINARY_DIR}
+                 -DRUNNER=${CMAKE_CURRENT_SOURCE_DIR}/run_one.sh
                  -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/RunCompare.cmake)
-endif()
+endforeach()
 
 message(STATUS "")
 message(STATUS "  Build:  cmake --build ${CMAKE_BINARY_DIR} -j")
