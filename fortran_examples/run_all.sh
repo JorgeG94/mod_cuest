@@ -59,6 +59,35 @@ fi
 PASS=0; FAIL=0; SKIP=0
 FAILED_NAMES=()
 
+# Machine-readable record of the run; report.py renders it afterwards so a
+# failure can be read without re-running anything.
+RESULTS="$BUILD_DIR/results.jsonl"
+: > "$RESULTS"
+jrec() {   # name kind status seconds detail
+    printf '{"name":"%s","kind":"%s","status":"%s","seconds":%s,"detail":"%s"}\n' \
+        "$1" "$2" "$3" "$4" "$5" >> "$RESULTS"
+}
+CAP_S="${CAP:-unknown}"
+jrec "env" "env" "info" 0 "" 
+python3 - "$RESULTS" "$BUILD_DIR" "$CAP_S" <<'PYENV'
+import json, os, socket, subprocess, sys, datetime
+res, build, cap = sys.argv[1], sys.argv[2], sys.argv[3]
+def sh(c):
+    try:
+        return subprocess.run(c, shell=True, capture_output=True, text=True).stdout.strip().splitlines()[0]
+    except Exception:
+        return ""
+env = {"kind": "env", "name": "env", "status": "info",
+       "date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+       "host": socket.gethostname(), "build_dir": os.path.abspath(build),
+       "gpu": sh("nvidia-smi --query-gpu=name --format=csv,noheader"),
+       "compute_cap": cap,
+       "cuda": sh("nvcc --version | tail -2 | head -1"),
+       "compiler": sh("gfortran --version")}
+lines = [l for l in open(res) if '"kind":"env"' not in l]
+open(res, "w").writelines(lines + [json.dumps(env) + "\n"])
+PYENV
+
 echo "============================================================"
 echo " cuEST Fortran examples"
 echo " Build dir : $BUILD_DIR"
@@ -82,14 +111,16 @@ while IFS='|' read -r name args; do
     args="${args//@GBS@/$GBS}"
 
     printf "[ RUN  ] %s\n" "$name"
+    t0=$SECONDS
     # shellcheck disable=SC2086
     if "$exe" $args; then
         echo "[ PASS ] $name"
-        PASS=$((PASS + 1))
+        PASS=$((PASS + 1)); jrec "$name" "run" "pass" $((SECONDS - t0)) ""
     else
+        rc=$?
         echo "[ FAIL ] $name"
-        FAIL=$((FAIL + 1))
-        FAILED_NAMES+=("$name")
+        FAIL=$((FAIL + 1)); FAILED_NAMES+=("$name")
+        jrec "$name" "run" "fail" $((SECONDS - t0)) "exit $rc"
     fi
     echo
 done < "$MANIFEST"
@@ -110,7 +141,7 @@ if [ -f "$BUILD_DIR/oracles.manifest" ]; then
                 > "$BUILD_DIR/$name.c.out" 2>&1 &&
            "$SCRIPT_DIR/run_one.sh" "$BUILD_DIR" "$fport"  "$name" \
                 > "$BUILD_DIR/$name.f.out" 2>&1 &&
-           python3 "$SCRIPT_DIR/compare.py" \
+           python3 "$SCRIPT_DIR/compare.py" --name "$name" --jsonl "$RESULTS" \
                 "$BUILD_DIR/$name.c.out" "$BUILD_DIR/$name.f.out"; then
             echo "[ PASS ] $name vs C reference"
             PASS=$((PASS + 1))
@@ -124,6 +155,8 @@ else
     echo "[ SKIP ] C reference comparisons (no oracles built)"
     SKIP=$((SKIP + 1)); echo
 fi
+
+python3 "$SCRIPT_DIR/report.py" "$BUILD_DIR" || true
 
 echo "============================================================"
 echo " Results: $PASS passed, $FAIL failed, $SKIP skipped"

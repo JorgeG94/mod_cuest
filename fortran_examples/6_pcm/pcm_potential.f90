@@ -268,7 +268,7 @@ program pcm_potential
     call dev_to_host(h_q, d_outq, npoint)
     call array_report("q (converged surface charges)", h_q, npoint)
     call scalar_report("PCM dielectric energy", pcm_energy)
-    call scalar_report("PCG converged residual", converged_residual)
+    call scalar_report("PCG converged residual [informational]", converged_residual)
     call scalar_report("PCG iterations taken", real(num_iterations, c_double))
     call scalar_report("PCG converged flag", real(converged, c_double))
 

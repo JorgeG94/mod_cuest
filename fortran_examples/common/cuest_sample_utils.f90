@@ -168,7 +168,10 @@ contains
         m = min(5, int(n))
         write(*,'(A,I0,A,I0,A)') "    leading ", m, " x ", m, " block:"
         do i = 1, m
-            write(*,'(6X,*(1X,F14.9))') (a((i-1)*n + j), j = 1, m)
+            ! Scientific, not F editing: F overflows to asterisks for values
+            ! that do not fit the field, and C's %f silently widens instead --
+            ! so a large matrix element would print as **** on one side only.
+            write(*,'(6X,*(1X,ES21.14E2))') (a((i-1)*n + j), j = 1, m)
         end do
     end subroutine matrix_report
 
@@ -206,7 +209,8 @@ contains
         write(*,'(A,ES22.14)') "    max |a_i|      : ", amax
         write(*,'(A,I0,A)')    "    first ", m, " values:"
         do i = 1, m
-            write(*,'(1X,F18.12)', advance="no") a(i)
+            ! See matrix_report: F editing cannot widen, C's %f can.
+            write(*,'(1X,ES21.14E2)', advance="no") a(i)
             if (mod(i, 6) == 0 .or. i == m) write(*,'(A)') ""
         end do
     end subroutine array_report

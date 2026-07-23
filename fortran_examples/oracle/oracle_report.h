@@ -74,7 +74,7 @@ static void oracle_report_matrix(const char *label, const double *A, uint64_t n)
     printf("    leading %llu x %llu block:\n",
            (unsigned long long) m, (unsigned long long) m);
     for (uint64_t i = 0; i < m; i++) {
-        for (uint64_t j = 0; j < m; j++) printf(" %14.9f", a[i * n + j]);
+        for (uint64_t j = 0; j < m; j++) printf(" %21.14E", a[i * n + j]);
         printf("\n");
     }
     free(a);
@@ -105,7 +105,7 @@ static void oracle_report_array(const char *label, const double *A, uint64_t n)
     printf("    max |a_i|      : %.14E\n", amax);
     printf("    first %llu values:\n", (unsigned long long) m);
     for (uint64_t i = 0; i < m; i++) {
-        printf(" %18.12f", a[i]);
+        printf(" %21.14E", a[i]);
         if ((i + 1) % 6 == 0 || i + 1 == m) printf("\n");
     }
     free(a);

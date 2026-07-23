@@ -446,7 +446,7 @@ int main(int argc, char **argv)
     oracle_report_matrix("V_PCM (PCM potential matrix)", d_V_pcm, nao);
     oracle_report_array("q (converged surface charges)", d_outQ, npoint);
     oracle_report_scalar("PCM dielectric energy", pcm_energy);
-    oracle_report_scalar("PCG converged residual", converged_residual);
+    oracle_report_scalar("PCG converged residual [informational]", converged_residual);
     oracle_report_scalar("PCG iterations taken", (double) num_iterations);
     oracle_report_scalar("PCG converged flag", (double) converged);
 
