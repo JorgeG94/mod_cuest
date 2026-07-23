@@ -195,6 +195,8 @@ file(GENERATE OUTPUT ${CMAKE_BINARY_DIR}/oracles.manifest
 enable_testing()
 set(DATA_DIR ${CMAKE_CURRENT_SOURCE_DIR}/data)
 
+find_program(PYTHON_EXE NAMES python3 python REQUIRED)
+
 add_test(NAME parsers
          COMMAND $<TARGET_FILE:test_parsers>
                  ${DATA_DIR}/geometry/h2o.xyz ${DATA_DIR}/basis_set/def2-svp.gbs)
@@ -212,6 +214,7 @@ foreach(_o IN LISTS _oracle_names)
                  -DNAME=${_o}
                  -DWORKDIR=${CMAKE_BINARY_DIR}
                  -DRUNNER=${CMAKE_CURRENT_SOURCE_DIR}/run_one.sh
+                 -DPYTHON_EXE=${PYTHON_EXE}
                  -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/RunCompare.cmake)
 endforeach()
 
