@@ -11,9 +11,10 @@ structs** — as of cuEST v0.2.0.
 |------|---------|
 | `cuest.f90` | The `cuest` module: enum PARAMETERs, the two workspace derived types, and `INTERFACE` blocks for every cuEST function. **Generated — do not edit.** |
 | `cuest_helpers.f90` | Optional `cuest_helpers` module: typed convenience wrappers over the generic `void*+size` get/set/query API. |
-| `example_overlap.f90` | Worked example: context → basis → plan → overlap matrix, with device-memory wiring. |
 | `generate_cuest_fortran.py` | Regenerates `cuest.f90` from the headers. |
-| `Makefile` | `make` / `make example` / `make regen` / `make clean`. |
+| `Makefile` | `make` / `make regen` / `make clean` — builds the bindings only. |
+| `cudafort/` | Standalone Fortran bindings to the CUDA Runtime + Driver APIs. Own README. |
+| `fortran_examples/` | Worked examples: ports of NVIDIA's cuEST C samples, with a shared helper layer, bundled input data and a C reference oracle. Own README. |
 
 ## Quick start
 
@@ -38,6 +39,14 @@ if (ist /= CUEST_STATUS_SUCCESS) error stop
 
 ```sh
 make                 # -> cuest.mod, cuest_helpers.mod, cuest.o, cuest_helpers.o
+```
+
+For runnable examples, see `fortran_examples/` (CMake, one variable):
+
+```sh
+cmake -S fortran_examples -B fortran_examples/build -DCUEST_ROOT=<cuest package>
+cmake --build fortran_examples/build -j
+./fortran_examples/run_all.sh fortran_examples/build
 ```
 
 Link your program against the shared (or static) cuEST library and the CUDA
@@ -112,7 +121,7 @@ ws%deviceBufferSizeInBytes = desc%deviceBufferSizeInBytes
 The usual pattern is **query → allocate → create/compute**: call the
 `…WorkspaceQuery` variant to fill a `cuestWorkspaceDescriptor_t`, allocate host
 and device scratch of those sizes, populate a `cuestWorkspace_t`, then call the
-real function. See `example_overlap.f90`.
+real function. See `fortran_examples/common/cuest_sample_utils.f90`.
 
 ## Regenerating after a cuEST update
 
@@ -143,7 +152,8 @@ recognise, it stops with `UNMAPPED ARG: …` pointing at the new case to add in
 - **Host vs device pointers.** Shell exponents/coefficients and pair-list
   coordinates (`xyzCPU`) are HOST arrays (pass `C_LOC(...)`); integral output
   matrices are DEVICE buffers (`cudaMalloc`, then `cudaMemcpy` back). See
-  `example_overlap.f90`, which computes an H2 overlap end-to-end.
+  `fortran_examples/`, whose one-electron integral port computes S, T and V
+  end-to-end and matches NVIDIA's C reference exactly.
 
 ## Notes / caveats
 

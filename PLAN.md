@@ -11,11 +11,13 @@ build. See `CLAUDE.md` for environment, build commands, and the cuEST API idioms
 contents are meant to sit in that package's `fortran/` directory. Where this
 document says "the samples", it means the package's copy.
 
-**Why the prerequisites come first.** The C samples rest on ~2k lines of shared helpers
-in `c_examples/common/`. There is no Fortran equivalent. `example_overlap.f90` dodges
-this by hardcoding H2/STO-3G and inlining `chk`/`make_ws`/`free_ws` into its `contains`
-block. Porting samples before building the shared layer means copy-pasting that
-scaffolding 29 times.
+**Why the prerequisites came first.** The C samples rest on ~2k lines of shared helpers
+in `c_examples/common/`, and there was no Fortran equivalent. The original
+`example_overlap.f90` dodged this by hardcoding H2/STO-3G and inlining
+`chk`/`make_ws`/`free_ws` into its `contains` block; porting samples on that basis
+would have meant copy-pasting the scaffolding 29 times. That shared layer now exists
+in `fortran_examples/common/`, and `example_overlap.f90` has been removed as
+superseded (it is in git history).
 
 ---
 
@@ -43,9 +45,8 @@ cannot express; costs 4 `cuTensorMapEncode*` functions) and GL/EGL/VDPAU
 graphics interop (needs external SDK headers, and pulls the driver API into the
 runtime module).
 
-Steps 2–4 below should now be built on `cuda_runtime` + `cuda_helpers` rather
-than on the ad-hoc `cuda_rt` module inlined in `fortran/example_overlap.f90`;
-that inline module should be deleted once Step 2 lands.
+Steps 2–4 are built on `cuda_runtime` + `cuda_helpers`. The ad-hoc `cuda_rt`
+module that `example_overlap.f90` used to inline is gone with that file.
 
 <details><summary>Original specification</summary>
 
@@ -114,8 +115,8 @@ line-count win of any item here. Depends on Step 1.
 
 ## Step 3 — Workspace helper `DONE`
 
-A `cuest_ws` type with type-bound `alloc(desc)` / `free()`, replacing the `make_ws` /
-`free_ws` pair currently inlined in `example_overlap.f90`. Saves ~15 lines per object
+`ws_alloc(ws, desc)` / `ws_free(ws)` in `fortran_examples/common/cuest_sample_utils.f90`,
+replacing the `make_ws` / `free_ws` pair that used to be inlined per program. Saves ~15 lines per object
 per sample and puts the "persistent workspace must outlive the object it created" rule
 in one place instead of 29. Mirrors `common/helper_workspaces.h`.
 
@@ -161,7 +162,8 @@ Deferred until their own sample groups: `ecp_parser` (group 5), `grid` (groups 1
 
 1. `0_context` (4) — no parsers needed, exercises Step 1 hardest (streams, multi-GPU)
 2. `2_one_electron_integrals` (4) — **1 of 4 done**: `one_electron_integrals`
-   (S, T, V) is ported and builds warning-free; awaiting a Hopper/A100 run
+   (S, T, V) is ported and **verified on Hopper against the C reference: zero
+   relative difference on every compared quantity**
 3. `1_basic_data_structures` (7)
 4. `3_density_fitting` (4)
 5. `4_exchange_correlation` (6) — leave `advanced_local_xc_{potential,gradient}` for

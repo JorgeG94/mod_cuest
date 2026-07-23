@@ -8,17 +8,16 @@ NVIDIA's C sample suite in idiomatic Fortran. See `PLAN.md` for the roadmap.
 
 This repo holds only the Fortran side. cuEST itself ships as a binary archive
 (`libcuest-linux-x86_64-<ver>_cuda12-archive/`) providing `include/`, `lib/` and
-`CUDALibrarySamples/`. **The repo contents are meant to sit in that package's
-`fortran/` directory** — the Makefile's `CUEST_ROOT ?= ..` assumes exactly that, so
-`../include` and `../lib` resolve. Working anywhere else means passing
-`CUEST_ROOT=/path/to/package` explicitly.
+`CUDALibrarySamples/`. The root `Makefile` defaults to `CUEST_ROOT ?= ..`, which assumes the repo sits in
+that package's `fortran/` directory; anywhere else, pass `CUEST_ROOT=` explicitly.
+`fortran_examples/` always takes `-DCUEST_ROOT=<pkg>` and so does not care where the
+checkout lives.
 
 | Path | Role |
 |---|---|
 | `cuest.f90` | **GENERATED — do not hand-edit.** Module `cuest`: 289 enum `parameter`s, the 2 workspace `bind(C)` types, interfaces for all 129 cuEST functions. |
 | `generate_cuest_fortran.py` | Regenerates `cuest.f90` from the package's `include/`. |
 | `cuest_helpers.f90` | Hand-written. Typed wrappers over the generic `void*+size_t` parameter/query API, plus `cuest_status_name`. |
-| `example_overlap.f90` | Worked example: H2 / STO-3G overlap matrix, hardcoded basis. Also carries an inline `cuda_rt` module — **superseded by `cudafort/`**; delete it once Step 2 of `PLAN.md` lands. |
 | `cudafort/` | Standalone, generated Fortran bindings to the CUDA Runtime + Driver APIs. Self-contained and droppable into unrelated projects. Has its own README. |
 | `fortran_examples/` | Ports of the cuEST C samples, the shared `common/` helper layer, bundled input data, and a C reference oracle. CMake-built: `cmake -S . -B build -DCUEST_ROOT=<pkg>` then `./run_all.sh build`. Has its own README. |
 | `PLAN.md` | The porting roadmap. Working document — keep its status markers current. |
@@ -33,9 +32,12 @@ module load cuda            # -> CUDA 12.9 at $CUDA_HOME
 ```
 
 ```sh
-make                                        # cuest.mod, cuest_helpers.mod
-make example CUDA_LIBDIR=$CUDA_HOME/lib64   # -> ./overlap_demo
-cd cudafort && make test CUDA_HOME=$CUDA_HOME
+make                                     # the bindings: cuest.mod, cuest_helpers.mod
+cd cudafort && make test CUDA_HOME=$CUDA_HOME     # CUDA bindings self-test
+
+cmake -S fortran_examples -B fortran_examples/build -DCUEST_ROOT=<pkg>
+cmake --build fortran_examples/build -j
+./fortran_examples/run_all.sh fortran_examples/build
 ```
 
 ### GPU architecture constraint — read this before debugging a runtime failure
@@ -43,9 +45,10 @@ cd cudafort && make test CUDA_HOME=$CUDA_HOME
 `libcuest.so` ships cubins for **sm_80, 86, 89, 90, 100, 120 only**. Volta (sm_70) is
 not supported.
 
-- The Gadi **login node has a V100**, so `./overlap_demo` there fails at `cuestCreate`
-  with status `11` = `CUEST_STATUS_UNSUPPORTED_ARCHITECTURE`. This is expected, not a
-  bug in the bindings. Compiling and linking work fine on the login node.
+- The Gadi **login node has a V100**, so anything touching cuEST fails there at
+  `cuestCreate` with status `11` = `CUEST_STATUS_UNSUPPORTED_ARCHITECTURE`. This is
+  expected, not a bug in the bindings. Compiling and linking work fine on the login
+  node, and `run_all.sh` detects the capability and says so before running anything.
 - Run on `gpuhopper` (H100, sm_90) or `dgxa100` (A100, sm_80). `gpuvolta` will not work.
 - Driver here is 580.x (advertises CUDA 13), so the `_cuda12` package is fine.
 
@@ -55,7 +58,8 @@ about cuEST needs a queue submission, and say so rather than reporting a login-n
 failure as a defect.
 
 `cudafort/` has no such constraint — it does not touch cuEST, so its self-test runs
-on the V100 login node.
+on the V100 login node. So does `fortran_examples`' `test_parsers`, which is why the
+parsers could be verified without queue time.
 
 ### Reference C build (the oracle)
 
