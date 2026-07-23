@@ -10,7 +10,7 @@
 # NOTE: cuEST needs sm_80 or newer. These will build anywhere but only RUN on
 # A100/H100 (Gadi: dgxa100 or gpuhopper, not gpuvolta).
 
-CUEST_PKG   ?= ../..
+CUEST_PKG   ?= ../../libcuest-linux-x86_64-0.2.0.4_cuda12-archive
 CUDA_HOME   ?= /usr/local/cuda
 FC          ?= gfortran
 FFLAGS      ?= -O2 -std=f2008 -Wall
@@ -18,7 +18,10 @@ BUILD       := build
 
 CUEST_LIBDIR := $(CUEST_PKG)/lib
 CUDA_LIBDIR  ?= $(CUDA_HOME)/lib64
-DATA         := $(CUEST_PKG)/CUDALibrarySamples/cuEST/data
+# Input data is bundled in data/ (see data/THIRD_PARTY_NOTICES.txt), so the
+# examples run without a CUDALibrarySamples checkout. Point DATA at the
+# upstream copy instead if you want to check them against it.
+DATA         ?= data
 
 LIBS := -L$(CUEST_LIBDIR) -lcuest \
         -L$(CUDA_LIBDIR) -lcudart -lcublas -lcusolver -lpthread -lm \
@@ -38,7 +41,7 @@ OBJ := $(addprefix $(BUILD)/,$(notdir $(SRC:.f90=.o)))
 SAMPLES := one_electron_integrals
 TESTS   := test_parsers
 
-.PHONY: all clean test $(addprefix run-,$(SAMPLES))
+.PHONY: all clean test oracle compare $(addprefix run-,$(SAMPLES))
 
 all: $(addprefix $(BUILD)/,$(SAMPLES)) $(addprefix $(BUILD)/,$(TESTS))
 
@@ -74,6 +77,29 @@ test: $(BUILD)/test_parsers
 
 run-one_electron_integrals: $(BUILD)/one_electron_integrals
 	$(BUILD)/one_electron_integrals $(DATA)/geometry/h2o.xyz $(DATA)/basis_set/def2-svp.gbs
+
+# ---- numeric oracle -------------------------------------------------------
+# NVIDIA's C sample computes S/T/V but never prints them, so oracle/ holds a
+# copy instrumented to print the same fingerprint as the Fortran port.
+CC       ?= gcc
+CFLAGS   ?= -O2
+COMMON   := $(CUEST_PKG)/CUDALibrarySamples/cuEST/c_examples/common
+
+oracle: $(BUILD)/one_electron_integrals_oracle
+
+$(BUILD)/one_electron_integrals_oracle: oracle/one_electron_integrals_oracle.c | $(BUILD)
+	$(CC) $(CFLAGS) -I$(CUEST_PKG)/include -I$(COMMON) $< -o $@ \
+	  -L$(CUEST_LIBDIR) -lcuest -L$(CUDA_LIBDIR) -lcudart -lm \
+	  -Wl,-rpath,$(CUEST_LIBDIR) -Wl,-rpath,$(CUDA_LIBDIR)
+
+XYZ ?= $(DATA)/geometry/h2o.xyz
+GBS ?= $(DATA)/basis_set/def2-svp.gbs
+
+# Run the C reference and the Fortran port on the same input and compare.
+compare: $(BUILD)/one_electron_integrals $(BUILD)/one_electron_integrals_oracle
+	@$(BUILD)/one_electron_integrals_oracle $(XYZ) $(GBS) > $(BUILD)/c.out
+	@$(BUILD)/one_electron_integrals        $(XYZ) $(GBS) > $(BUILD)/f.out
+	@python3 compare.py $(BUILD)/c.out $(BUILD)/f.out
 
 clean:
 	rm -rf $(BUILD)
