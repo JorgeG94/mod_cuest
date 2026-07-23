@@ -48,9 +48,13 @@ build-*/
 CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake
-Makefile
 install_manifest.txt
 compile_commands.json
+# NOTE: a bare "Makefile" rule used to live here (for CMake-generated
+# Makefiles). This project has no CMake build and ships hand-written
+# Makefiles, so that rule was silently excluding them from the repo.
+# Only ignore Makefiles inside build directories:
+build*/Makefile
 
 # Temporary files
 *.tmp
