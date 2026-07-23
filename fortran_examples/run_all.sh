@@ -29,6 +29,15 @@ if [ ! -f "$MANIFEST" ]; then
     echo "ERROR: $MANIFEST not found -- re-run cmake to regenerate it."
     exit 1
 fi
+# Checked up front rather than per-comparison: if this helper is missing, every
+# comparison short-circuits before compare.py runs and the summary reads as N
+# numerical failures, which is a badly misleading way to report a missing file.
+if [ ! -x "$SCRIPT_DIR/run_one.sh" ]; then
+    echo "ERROR: $SCRIPT_DIR/run_one.sh is missing or not executable."
+    echo "       It expands the @XYZ@/@GBS@ tokens from the manifest and is"
+    echo "       required by both this script and the CTest comparisons."
+    exit 1
+fi
 
 # Input data, bundled in data/ (see data/THIRD_PARTY_NOTICES.txt).
 XYZ="$DATA_DIR/geometry/h2o.xyz"
