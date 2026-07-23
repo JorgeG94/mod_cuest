@@ -84,9 +84,10 @@ static void oracle_report_matrix(const char *label, const double *A, uint64_t n)
 static void oracle_report_array(const char *label, const double *A, uint64_t n)
 {
     double *a = oracle_pull(A, (size_t) n);
-    double sum = 0.0, nrm = 0.0, amax = 0.0;
+    double sum = 0.0, nrm = 0.0, amax = 0.0, l1 = 0.0;
     for (uint64_t i = 0; i < n; i++) {
         sum += a[i];
+        l1  += fabs(a[i]);
         nrm += a[i] * a[i];
         if (fabs(a[i]) > amax) amax = fabs(a[i]);
     }
@@ -96,6 +97,10 @@ static void oracle_report_array(const char *label, const double *A, uint64_t n)
     printf("  array %s\n", label);
     printf("    length         : %llu\n", (unsigned long long) n);
     printf("    sum            : %.14E\n", sum);
+    /* L1 is invariant under sign flips while `sum` is not: if two arrays agree
+     * in norm and L1 but disagree in sum, the values are the same and some
+     * signs differ -- an indexing or layout difference, not a precision one. */
+    printf("    sum |a_i|      : %.14E\n", l1);
     printf("    norm           : %.14E\n", nrm);
     printf("    max |a_i|      : %.14E\n", amax);
     printf("    first %llu values:\n", (unsigned long long) m);

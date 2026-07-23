@@ -60,6 +60,29 @@ def rel(x, y):
     return 0.0 if d == 0.0 else abs(x - y) / d
 
 
+# Fields that describe shape rather than magnitude. They must match exactly,
+# but they must not set the scale a section is judged against.
+COUNT_FIELDS = ("length", "dimension")
+
+
+def section_scale(sec):
+    """The natural magnitude of the object a section describes.
+
+    A purely relative test is wrong for quantities that are analytically zero.
+    The sum of a translationally-invariant gradient, or max|A-A^T| for a
+    symmetric matrix, is roundoff: two correct implementations summing the same
+    bit-identical elements in a different order land on 5.8e-15 and 2.2e-15,
+    which "differ" by 62% while being equally right. Judging such a quantity
+    against the size of the object it came from -- the norm, the trace, the
+    largest element -- rather than against itself, distinguishes noise from a
+    real disagreement without hiding one.
+    """
+    vals = [abs(v) for name, v in sec["fields"].items()
+            if not any(c in name for c in COUNT_FIELDS)]
+    vals += [abs(v) for v in sec["values"]]
+    return max(vals) if vals else 0.0
+
+
 def main(a, b, tol=1e-10):
     A, B = parse(a), parse(b)
     if not A or not B:
@@ -73,8 +96,10 @@ def main(a, b, tol=1e-10):
             print(f"  EXTRA in Fortran output:     {s}")
         sys.exit("FAIL: the two outputs do not describe the same quantities")
 
-    worst, bad, checks = 0.0, 0, 0
+    worst, bad, checks, noise = 0.0, 0, 0, 0
     for label in sorted(A):
+        scale = max(section_scale(A[label]), section_scale(B[label]))
+        floor = tol * scale          # absolute floor from the object's own size
         for name, x in A[label]["fields"].items():
             if name not in B[label]["fields"]:
                 print(f"  {label}: field '{name}' missing from Fortran output")
@@ -82,29 +107,37 @@ def main(a, b, tol=1e-10):
                 continue
             y = B[label]["fields"][name]
             r = rel(x, y)
-            worst = max(worst, r)
             checks += 1
-            ok = r <= tol
+            below_floor = abs(x - y) <= floor
+            ok = r <= tol or below_floor
             if not ok:
                 bad += 1
+                worst = max(worst, r)
+            tag = "ok" if r <= tol else ("ok (noise)" if below_floor else "MISMATCH")
+            if tag == "ok (noise)":
+                noise += 1
             print(f"  {label:32s} {name:16s} C={x: .12e} F={y: .12e} "
-                  f"rel={r:.2e}  {'ok' if ok else 'MISMATCH'}")
+                  f"rel={r:.2e}  {tag}")
         va, vb = A[label]["values"], B[label]["values"]
         if len(va) != len(vb):
             print(f"  {label}: value count differs ({len(va)} vs {len(vb)})")
             bad += 1
         elif va:
             r = max(rel(u, v) for u, v in zip(va, vb))
-            worst = max(worst, r)
             checks += len(va)
-            ok = r <= tol
+            ok = r <= tol or max(abs(u - v) for u, v in zip(va, vb)) <= floor
             if not ok:
                 bad += 1
+                worst = max(worst, r)
             print(f"  {label:32s} {'values':16s} {len(va):4d} numbers"
                   f"{'':25s} max rel={r:.2e}  {'ok' if ok else 'MISMATCH'}")
 
     print(f"\n{checks} quantities compared across {len(A)} sections")
-    print(f"worst relative difference: {worst:.3e}   tolerance: {tol:.1e}")
+    if noise:
+        print(f"{noise} quantity/quantities agreed only in absolute terms "
+              f"(analytically-zero values; see section_scale)")
+    print(f"worst UNEXPLAINED relative difference: {worst:.3e}   "
+          f"tolerance: {tol:.1e}")
     if bad:
         sys.exit(f"FAIL: {bad} quantity/quantities disagree")
     print("PASS: Fortran port matches the C reference")

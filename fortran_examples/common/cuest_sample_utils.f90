@@ -180,13 +180,15 @@ contains
         character(*),       intent(in) :: label
         real(c_double),     intent(in) :: a(:)
         integer(c_int64_t), intent(in) :: n
-        real(c_double) :: s, nrm, amax
+        real(c_double) :: s, nrm, amax, l1
         integer :: i, m
         s = 0.0d0
         nrm = 0.0d0
         amax = 0.0d0
+        l1 = 0.0d0
         do i = 1, int(n)
             s = s + a(i)
+            l1 = l1 + abs(a(i))
             nrm = nrm + a(i)**2
             if (abs(a(i)) > amax) amax = abs(a(i))
         end do
@@ -196,6 +198,10 @@ contains
         write(*,'(A,A)')    "  array ", label
         write(*,'(A,I0)')      "    length         : ", n
         write(*,'(A,ES22.14)') "    sum            : ", s
+        ! L1 is invariant under sign flips while `sum` is not -- see the note in
+        ! oracle/oracle_report.h. Agreeing in norm and L1 but not in sum means
+        ! the same values with some signs differing.
+        write(*,'(A,ES22.14)') "    sum |a_i|      : ", l1
         write(*,'(A,ES22.14)') "    norm           : ", nrm
         write(*,'(A,ES22.14)') "    max |a_i|      : ", amax
         write(*,'(A,I0,A)')    "    first ", m, " values:"
