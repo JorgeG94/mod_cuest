@@ -20,6 +20,7 @@ This repo holds only the Fortran side. cuEST itself ships as a binary archive
 | `cuest_helpers.f90` | Hand-written. Typed wrappers over the generic `void*+size_t` parameter/query API, plus `cuest_status_name`. |
 | `example_overlap.f90` | Worked example: H2 / STO-3G overlap matrix, hardcoded basis. Also carries an inline `cuda_rt` module — **superseded by `cudafort/`**; delete it once Step 2 of `PLAN.md` lands. |
 | `cudafort/` | Standalone, generated Fortran bindings to the CUDA Runtime + Driver APIs. Self-contained and droppable into unrelated projects. Has its own README. |
+| `fortran_examples/` | Ports of the cuEST C samples, the shared `common/` helper layer, bundled input data, and a C reference oracle. CMake-built: `cmake -S . -B build -DCUEST_ROOT=<pkg>` then `./run_all.sh build`. Has its own README. |
 | `PLAN.md` | The porting roadmap. Working document — keep its status markers current. |
 
 ## Environment (NCI Gadi)

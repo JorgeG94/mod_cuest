@@ -71,3 +71,7 @@ vcpkg_installed/
 # test output & cache
 Testing/
 .cache/
+
+# Example run logs
+fortran_examples/onee_fortran
+fortran_examples/*.out
