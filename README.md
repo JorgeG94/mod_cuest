@@ -66,6 +66,135 @@ Tested to compile warning-free with `gfortran -std=f2008 -Wall` (GCC 15) and
 `-std=f2018 -pedantic`. It is standard Fortran 2008 and also builds with
 `nvfortran` / `ifx` (`make FC=nvfortran`).
 
+## Adding this to an existing Fortran project
+
+The binding is two source files with no dependencies beyond `iso_c_binding`, so
+"integrating" it means compiling them alongside your own code. There is nothing
+to install and no configuration step.
+
+### 1. Take the files you need
+
+| file | when |
+|---|---|
+| `cuest.f90` | always — the `cuest` module |
+| `cuest_helpers.f90` | recommended — typed `query`/`configure` wrappers and `cuest_status_name` |
+| `cudafort/cuda_runtime.f90` | if you need `cudaMalloc`/`cudaMemcpy` etc. and are not already using `cudafor` |
+| `cudafort/cuda_helpers.f90` | optional — `cuda_check`, typed array copies |
+
+You will need *some* way to allocate device memory, because cuEST reads and
+writes GPU buffers. If you build with `nvfortran` you already have `cudafor`;
+otherwise take `cudafort/`, which is compiler-agnostic. See its own README.
+
+Copy them in (e.g. under `third_party/cuest_fortran/`), or add this repository as
+a git submodule. Do not edit `cuest.f90` — regenerate it instead (see below).
+
+### 2. Compile them before your code
+
+Fortran module files must exist before anything that `use`s them, so compile
+`cuest.f90` first, then `cuest_helpers.f90`, then your sources.
+
+**Plain make:**
+
+```make
+CUEST_ROOT ?= /path/to/libcuest-linux-x86_64-<ver>_cuda12-archive
+CUDA_LIBDIR ?= $(CUDA_HOME)/lib64
+
+CUEST_LIBS := -L$(CUEST_ROOT)/lib -lcuest -L$(CUDA_LIBDIR) -lcudart \
+              -Wl,-rpath,$(CUEST_ROOT)/lib -Wl,-rpath,$(CUDA_LIBDIR)
+
+myapp: main.f90 cuest.o cuest_helpers.o
+	$(FC) $^ -o $@ $(CUEST_LIBS)
+
+cuest.o:         third_party/cuest_fortran/cuest.f90         ; $(FC) -c $<
+cuest_helpers.o: third_party/cuest_fortran/cuest_helpers.f90 ; $(FC) -c $<
+```
+
+**CMake** — CMake derives Fortran compile order from `MODULE`/`USE`, so the
+sources can simply be listed:
+
+```cmake
+cmake_minimum_required(VERSION 3.20)
+project(myapp LANGUAGES Fortran)
+find_package(CUDAToolkit REQUIRED)
+
+add_library(cuest_fortran STATIC
+    third_party/cuest_fortran/cuest.f90
+    third_party/cuest_fortran/cuest_helpers.f90)
+target_link_libraries(cuest_fortran
+    PUBLIC ${CUEST_ROOT}/lib/libcuest.so CUDA::cudart)
+target_include_directories(cuest_fortran
+    PUBLIC ${CMAKE_Fortran_MODULE_DIRECTORY})
+
+add_executable(myapp main.f90)
+target_link_libraries(myapp PRIVATE cuest_fortran)
+```
+
+Configure with `-DCUEST_ROOT=/path/to/libcuest-...-archive`. Linking the `.so` by
+full path makes CMake add the rpath for you.
+
+Only the cuEST **library** is needed to build against. Headers are not: the
+binding is pre-generated and checked in.
+
+### 3. Check the link before writing real code
+
+This compiles and runs on any machine with the library present — it deliberately
+creates no cuEST handle, so it does not need a supported GPU:
+
+```fortran
+program check_cuest
+    use, intrinsic :: iso_c_binding
+    use cuest
+    use cuest_helpers, only: cuest_status_name
+    implicit none
+    type(c_ptr)    :: params = c_null_ptr
+    integer(c_int) :: ist
+
+    write(*,'(A,I0,".",I0,".",I0)') "built against cuEST headers v", &
+        CUEST_VER_MAJOR, CUEST_VER_MINOR, CUEST_VER_PATCH
+
+    ist = cuestParametersCreate(CUEST_HANDLE_PARAMETERS, params)
+    call check(ist, "cuestParametersCreate")
+    ist = cuestParametersDestroy(CUEST_HANDLE_PARAMETERS, params)
+    call check(ist, "cuestParametersDestroy")
+
+    write(*,'(A)') "cuEST is linked and callable."
+
+contains
+
+    ! Note: ERROR STOP takes a *constant* stop code in Fortran 2008; passing a
+    ! computed string is a 2018 extension. Print, then stop with a literal.
+    subroutine check(status, what)
+        integer(c_int), intent(in) :: status
+        character(*),   intent(in) :: what
+        write(*,'(A,A,A)') what, " -> ", cuest_status_name(status)
+        if (status /= CUEST_STATUS_SUCCESS) error stop 1
+    end subroutine check
+
+end program check_cuest
+```
+
+If that runs, your build is wired correctly and any later failure is an API
+usage problem rather than an integration one.
+
+### 4. Then read the gotchas
+
+The API has three conventions that are not visible in the Fortran signatures and
+will cost you an afternoon each. They are documented below under *Gotchas
+learned the hard way* and *Workspaces*, but in short: every parameters object
+must be created rather than left `c_null_ptr`; `type(c_ptr)` arguments are
+sometimes host and sometimes device addresses; and object creation follows
+query → allocate → create.
+
+`fortran_examples/` contains 29 worked programs covering the whole API, each
+verified against NVIDIA's own C sample. `fortran_examples/common/` is a
+ready-made scaffolding layer (status checking, workspace allocation, device
+buffers) that is worth reading before writing your own.
+
+> **Runtime requirement.** cuEST ships GPU code for **sm_80 and newer** only.
+> On anything older — including Volta/V100 — `cuestCreate` returns
+> `CUEST_STATUS_UNSUPPORTED_ARCHITECTURE` (status 11). Everything still compiles
+> and links there; it just cannot run.
+
 > **Platform note.** The bundled `../lib/libcuest.so` is Linux/x86_64 and cuEST
 > runs on NVIDIA GPUs, so the *final link/run* must happen on that target. The
 > Fortran sources themselves compile anywhere (the `.mod` is host-independent).
@@ -133,7 +262,7 @@ real function. See `fortran_examples/common/cuest_sample_utils.f90`.
 The binding is produced mechanically, so a new cuEST release is a one-liner:
 
 ```sh
-make regen            # or: python3 generate_cuest_fortran.py ../include
+make regen CUEST_ROOT=/path/to/libcuest-...-archive
 make
 ```
 
@@ -168,4 +297,6 @@ recognise, it stops with `UNMAPPED ARG: …` pointing at the new case to add in
   comment in `cuest.f90`.
 - The bindings are pure interface declarations — they add no overhead and make
   no assumptions about host vs device memory beyond the mapping above.
-- JIT-compiled kernels require CUDA 13.x (this is the `_cuda13` package).
+- cuEST ships GPU code for **sm_80 and newer**. On older hardware everything
+  compiles and links, but `cuestCreate` returns
+  `CUEST_STATUS_UNSUPPORTED_ARCHITECTURE`.
