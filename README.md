@@ -1,7 +1,12 @@
 # cuEST — Fortran interface
 
 Fortran 2008 `iso_c_binding` bindings for NVIDIA **cuEST** (CUDA Electronic
-Structure), generated from the C headers in `../include`.
+Structure), generated from the cuEST C headers.
+
+`cuest.f90` is checked in, so building the bindings needs only a Fortran compiler --
+no cuEST package. The package is needed to *link* (`lib/`), to run the examples, and
+to regenerate (`include/`); point at it with `CUEST_ROOT`. This repository can live
+anywhere; it is normally a sibling of the unpacked package, not inside it.
 
 The binding exposes the **entire** public API: **129 functions**, **289 enum
 constants** (83 enums), the **67 opaque handle types**, and the **2 workspace

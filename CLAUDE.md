@@ -8,10 +8,16 @@ NVIDIA's C sample suite in idiomatic Fortran. See `PLAN.md` for the roadmap.
 
 This repo holds only the Fortran side. cuEST itself ships as a binary archive
 (`libcuest-linux-x86_64-<ver>_cuda12-archive/`) providing `include/`, `lib/` and
-`CUDALibrarySamples/`. The root `Makefile` defaults to `CUEST_ROOT ?= ..`, which assumes the repo sits in
-that package's `fortran/` directory; anywhere else, pass `CUEST_ROOT=` explicitly.
-`fortran_examples/` always takes `-DCUEST_ROOT=<pkg>` and so does not care where the
-checkout lives.
+`CUDALibrarySamples/`. **This repo does not need to live inside the package.** It is normally a sibling of
+it. `fortran_examples/` takes `-DCUEST_ROOT=<pkg>` explicitly, and building the
+bindings needs no package at all (`cuest.f90` is generated source, checked in). Only
+`make regen` needs the headers, and it errors clearly if `CUEST_ROOT` does not point
+at them.
+
+The one layout rule is internal: **`fortran_examples/` expects `cuest.f90`,
+`cuest_helpers.f90` and `cudafort/` one directory above it**, i.e. at the repo root.
+Moving the module elsewhere means editing the four `../` paths in
+`fortran_examples/CMakeLists.txt`.
 
 | Path | Role |
 |---|---|
