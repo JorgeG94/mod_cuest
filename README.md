@@ -271,13 +271,8 @@ applies the mapping table above. If cuEST introduces a C type the mapper doesn't
 recognise, it stops with `UNMAPPED ARG: …` pointing at the new case to add in
 `map_arg()` — nothing is emitted silently.
 
-## Gotchas learned the hard way
+## Gotchas
 
-- **Match the package to your driver.** The `cuda13` build JIT-compiles kernels
-  at `cuestCreate` and needs a CUDA-13-capable driver (r580+); on a box whose
-  `nvidia-smi` shows "CUDA Version: 12.x" it throws `CUEST_STATUS_EXCEPTION`.
-  Use the `…_cuda12-archive` build there instead — the Fortran module is
-  identical (just `make regen` against that package's headers).
 - **Every `parameters` object must be created — never pass `c_null_ptr`.** Even
   types with "no configurable parameters" (AO shell/basis/pair-list/plan) still
   require a live handle from `cuestParametersCreate(<TYPE>_PARAMETERS, p)`,
@@ -295,8 +290,3 @@ recognise, it stops with `UNMAPPED ARG: …` pointing at the new case to add in
   generator shortens `PARAMETERS`→`PARAM` for those (only the integer *value*
   is passed to C, so the alias is exact). Each is flagged with a `! C name …`
   comment in `cuest.f90`.
-- The bindings are pure interface declarations — they add no overhead and make
-  no assumptions about host vs device memory beyond the mapping above.
-- cuEST ships GPU code for **sm_80 and newer**. On older hardware everything
-  compiles and links, but `cuestCreate` returns
-  `CUEST_STATUS_UNSUPPORTED_ARCHITECTURE`.
