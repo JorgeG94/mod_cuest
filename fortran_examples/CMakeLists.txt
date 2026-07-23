@@ -82,19 +82,28 @@ endif()
 # c_examples/common. CMake scans Fortran source for MODULE/USE and works out
 # the compile order itself, so the sources are just listed.
 # ---------------------------------------------------------------------------
-# common/*.f90 is globbed (with CONFIGURE_DEPENDS, so cmake re-runs when a file
-# appears) rather than listed. Ports are developed in parallel and each new
-# shared helper would otherwise mean editing this one file from several places
-# at once. CMake works out the compile order from the MODULE/USE statements.
-file(GLOB CUEST_COMMON_SOURCES CONFIGURE_DEPENDS
-     ${CMAKE_CURRENT_SOURCE_DIR}/common/*.f90)
-
+# Listed explicitly rather than globbed. During the initial porting effort this
+# was a CONFIGURE_DEPENDS glob, so that several ports could add shared helpers
+# concurrently without editing one source list from many places at once. That
+# is over, and a glob has a real cost: adding or removing a file makes CMake
+# print "GLOB mismatch!" and silently re-configure mid-build, which looks like
+# an error and makes a build depend on directory contents rather than on what
+# is written here. An explicit list is reproducible.
+#
+# Order does not matter: CMake scans Fortran sources for MODULE/USE and derives
+# the compile order itself.
 add_library(cuest_fortran_common STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../cudafort/cuda_runtime.f90
     ${CMAKE_CURRENT_SOURCE_DIR}/../cudafort/cuda_helpers.f90
     ${CMAKE_CURRENT_SOURCE_DIR}/../cuest.f90
     ${CMAKE_CURRENT_SOURCE_DIR}/../cuest_helpers.f90
-    ${CUEST_COMMON_SOURCES}
+    common/cuest_sample_utils.f90
+    common/xyz_parser.f90
+    common/gbs_parser.f90
+    common/ao_shells.f90
+    common/ecp_parser.f90
+    common/grid_helper.f90
+    common/pcm_helper.f90
 )
 target_link_libraries(cuest_fortran_common
     PUBLIC
