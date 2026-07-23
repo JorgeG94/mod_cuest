@@ -75,3 +75,7 @@ Testing/
 # Example run logs
 fortran_examples/onee_fortran
 fortran_examples/*.out
+
+# Python bytecode
+__pycache__/
+*.pyc

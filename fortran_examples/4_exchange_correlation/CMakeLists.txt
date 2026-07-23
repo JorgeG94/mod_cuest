@@ -21,3 +21,13 @@ add_fortran_example(nonlocal_xc_gradient
     ${CMAKE_CURRENT_SOURCE_DIR}/nonlocal_xc_gradient.f90 ARGS @XYZ@ @GBS@)
 add_c_oracle(nonlocal_xc_gradient
     ${CMAKE_SOURCE_DIR}/oracle/nonlocal_xc_gradient_oracle.c)
+
+add_fortran_example(advanced_local_xc_potential
+    ${CMAKE_CURRENT_SOURCE_DIR}/advanced_local_xc_potential.f90 ARGS @XYZ@ @GBS@)
+add_c_oracle(advanced_local_xc_potential
+    ${CMAKE_SOURCE_DIR}/oracle/advanced_local_xc_potential_oracle.c)
+
+add_fortran_example(advanced_local_xc_gradient
+    ${CMAKE_CURRENT_SOURCE_DIR}/advanced_local_xc_gradient.f90 ARGS @XYZ@ @GBS@)
+add_c_oracle(advanced_local_xc_gradient
+    ${CMAKE_SOURCE_DIR}/oracle/advanced_local_xc_gradient_oracle.c)
