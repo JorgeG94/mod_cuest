@@ -112,14 +112,14 @@ for `real(c_double)` at minimum. Every sample repeats
 `cudaMalloc(d, int(n*n,c_size_t)*8_c_size_t)` + `cudaMemcpy` + `cudaFree`. Biggest
 line-count win of any item here. Depends on Step 1.
 
-## Step 3 — Workspace helper `TODO`
+## Step 3 — Workspace helper `DONE`
 
 A `cuest_ws` type with type-bound `alloc(desc)` / `free()`, replacing the `make_ws` /
 `free_ws` pair currently inlined in `example_overlap.f90`. Saves ~15 lines per object
 per sample and puts the "persistent workspace must outlive the object it created" rule
 in one place instead of 29. Mirrors `common/helper_workspaces.h`.
 
-## Step 4 — Status checking `TODO`
+## Step 4 — Status checking `PARTIAL`
 
 `cuest_check(status, what)` and `cuda_check(code, what)` in a module rather than
 re-declared per program. Mirrors `common/helper_status.h`.
@@ -128,14 +128,19 @@ Also: make `generate_cuest_fortran.py` emit `cuest_status_name` from the
 `CUEST_STATUS_*` enum block. It is currently a hand-maintained `select case` in
 `cuest_helpers.f90` that will silently drift on the next cuEST release.
 
-## Step 5 — Parsers and basis-set construction `TODO`
+## Step 5 — Parsers and basis-set construction `PARTIAL`
 
 Fortran equivalents of the `common/` helpers. These unlock sample groups 1–4:
 
-- `xyz_parser.f90` ← `helper_xyz_parser.h` (symbol→Z, coords, Å→bohr scaling)
-- `gbs_parser.f90` ← `helper_gbs_parser.h` (Gaussian94 format; no SP/SPD shells)
-- `shell_normalization.f90` ← `helper_shell_normalization.h` (pure arithmetic, direct port)
-- `ao_shells.f90` ← `helper_ao_shells.h` (`formAOShells`: unique elements → shell array)
+- `xyz_parser.f90` ← `helper_xyz_parser.h` — **DONE** (`fortran_examples/common/`)
+- `gbs_parser.f90` ← `helper_gbs_parser.h` — **DONE**
+- shell normalization ← `helper_shell_normalization.h` — **DONE** (in `ao_shells.f90`)
+- `ao_shells.f90` ← `helper_ao_shells.h` (`formAOShells`) — **DONE**
+
+Verified: `fortran_examples/test_parsers` cross-checks the parsed exponents and
+normalized coefficients against NVIDIA's own C helpers for def2-SVP O and H --
+all 17 primitives agree to zero relative difference. It creates no cuEST handle,
+so it runs on Volta and needs no queue submission.
 
 Deferred until their own sample groups: `ecp_parser` (group 5), `grid` (groups 1, 4),
 `pcm` (group 6).
@@ -155,7 +160,8 @@ Deferred until their own sample groups: `ecp_parser` (group 5), `grid` (groups 1
 ## Porting order, once Steps 1–6 land
 
 1. `0_context` (4) — no parsers needed, exercises Step 1 hardest (streams, multi-GPU)
-2. `2_one_electron_integrals` (4) — validates the parsers against known values
+2. `2_one_electron_integrals` (4) — **1 of 4 done**: `one_electron_integrals`
+   (S, T, V) is ported and builds warning-free; awaiting a Hopper/A100 run
 3. `1_basic_data_structures` (7)
 4. `3_density_fitting` (4)
 5. `4_exchange_correlation` (6) — leave `advanced_local_xc_{potential,gradient}` for
