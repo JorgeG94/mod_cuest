@@ -17,9 +17,18 @@ import re
 import sys
 
 NUM = r"[-+]?(?:\d+\.\d*|\.\d+|\d+)(?:[EeDd][-+]?\d+)?"
-SECTION = re.compile(r"^\s*(matrix|array|scalar)\s+(\S.*?)\s*$")
-FIELD = re.compile(r"^\s*([A-Za-z][^:]*?)\s*:\s*(" + NUM + r")\s*$")
-VALUES = re.compile(r"^\s*(?:" + NUM + r"\s+)*" + NUM + r"\s*$")
+
+# The indentation is significant, not cosmetic. Both reporters emit section
+# headers at exactly 2 spaces and fields at exactly 4 (see oracle_report.h and
+# cuest_sample_utils.f90). Several upstream samples print unindented
+# informational lines of the form "PCG converged residual: 1.2e-05", which a
+# looser pattern would silently absorb into whichever section was open --
+# comparing a quantity nobody meant to compare, or masking a missing one.
+# Anchoring on the exact indent means a port cannot break the parse just by
+# printing something chatty.
+SECTION = re.compile(r"^ {2}(matrix|array|scalar) (\S.*?)\s*$")
+FIELD = re.compile(r"^ {4}([A-Za-z][^:]*?)\s*:\s*(" + NUM + r")\s*$")
+VALUES = re.compile(r"^\s+(?:" + NUM + r"\s+)*" + NUM + r"\s*$")
 
 
 def to_float(s):
