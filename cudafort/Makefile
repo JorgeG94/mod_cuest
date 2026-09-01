@@ -25,8 +25,8 @@ OBJS := cuda_runtime.o cuda_driver.o cuda_helpers.o
 
 all: $(OBJS)
 
-cuda_runtime.o cuda_runtime.mod: cuda_runtime.f90
-	$(FC) $(FFLAGS) -c cuda_runtime.f90
+cuda_runtime.o cuda_runtime.mod: cuda_runtime.F90
+	$(FC) $(FFLAGS) -c cuda_runtime.F90
 
 cuda_driver.o cuda_driver.mod: cuda_driver.f90
 	$(FC) $(FFLAGS) -c cuda_driver.f90
