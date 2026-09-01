@@ -78,7 +78,7 @@ to install and no configuration step.
 |---|---|
 | `cuest.f90` | always — the `cuest` module |
 | `cuest_helpers.f90` | recommended — typed `query`/`configure` wrappers and `cuest_status_name` |
-| `cudafort/cuda_runtime.f90` | if you need `cudaMalloc`/`cudaMemcpy` etc. and are not already using `cudafor` |
+| `cudafort/cuda_runtime.F90` | if you need `cudaMalloc`/`cudaMemcpy` etc. and are not already using `cudafor` |
 | `cudafort/cuda_helpers.f90` | optional — `cuda_check`, typed array copies |
 
 You will need *some* way to allocate device memory, because cuEST reads and
